@@ -1,0 +1,3 @@
+[submodule "external/fiji"]
+	path = external/fiji
+	url = git@github.com:fiji/fiji.git
