@@ -4,12 +4,9 @@ import matplotlib.pyplot as plt
 import csv
 import matplotlib.image
 
-# Path to the CSV file
-csv_file = 'monochromatic_high_mag_2_Optical.csv'
-
 def extract_monochrome_r_image(file_path):
     with open(file_path, 'r') as f:
-        reader = csv.reader(f)i
+        reader = csv.reader(f)
         capture = False
         pixel_rows = []
         for row in reader:
@@ -27,15 +24,15 @@ def extract_monochrome_r_image(file_path):
                 if pixel_row:
                     pixel_rows.append(pixel_row)
         return np.array(pixel_rows, dtype=np.uint8)
-
-# Extract only Monochrome (R) data
-img_array = extract_monochrome_r_image(csv_file)
-
-# Display the image
-plt.imshow(img_array, cmap='gray', vmin=0, vmax=255)
-plt.title("Monochrome (R) Image")
-plt.axis('off')
-plt.show()
 # %%
 if __name__ == "__main__":
-    matplotlib.image.imsave('monochrome_r_image.png', img_array, cmap='gray', vmin=0, vmax=255)
+    # Path to the CSV file
+    csv_file = '../data/monochromatic_high_mag_2_Optical.csv '
+    # Extract only Monochrome (R) data
+    img_array = extract_monochrome_r_image(csv_file)
+    matplotlib.image.imsave('../data/monochrome_r_image.png', img_array, cmap='gray', vmin=0, vmax=255)
+    # Display the image
+    plt.imshow(img_array, cmap='gray', vmin=0, vmax=255)
+    plt.title("Monochrome (R) Image")
+    plt.axis('off')
+    plt.show()
