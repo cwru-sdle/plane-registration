@@ -4,36 +4,62 @@ from pypcd import pypcd
 import polars as pl
 import os
 import re
+from multiprocessing import Pool, cpu_count
 # %%
-part_1 = "/mnt/vstor/CSE_MSE_RXF131/lab-staging/mds3/AdvManu/lpbf-aconity/registeration/session_2025_03_25_16-54-19.812/config_3_67d0704e91000019001f401c/job_1_67e28ebb8f00003c0203e1e7/sensors/ECAMPCDWriterSink__1/layer/"
-part_2 = "/mnt/vstor/CSE_MSE_RXF131/lab-staging/mds3/AdvManu/lpbf-aconity/registeration/session_2025_03_25_18-52-34.763/config_3_67d0660b8a00007d0127a247/job_8_67e28ebb8f00003c0203e1e7/sensors/ECAMPCDWriterSink__1/layer/"
+'''Get Paths and Load DataFrames'''
+log_path = "/mnt/vstor/CSE_MSE_RXF131/lab-staging/mds3/AdvManu/aconity_log/"
 
-def get_pcd_paths(directory):
-    return sorted([
-        os.path.join(directory, fname)
-        for fname in os.listdir(directory)
-        if fname.endswith(".pcd")
-    ])
+pattern = re.compile(
+    r"""
+    session_(\d{4}_\d{2}_\d{2}_\d{2}-\d{2}-\d{2}\.\d+)/     # session
+    config_(\d+_[a-f0-9]+)/                                 # config
+    job_(\d+_[a-f0-9]+)/                                    # job
+    sensors/ECAMPCDWriterSink__1/layer/(\d{3}\.\d{3})\.pcd  # layer
+    """,
+    re.VERBOSE
+)
 
-paths = get_pcd_paths(part_1) + get_pcd_paths(part_2)
-# %%
-'''Load dfs'''
-all_dfs = []
-for file_path in paths:
+# Define this outside so it can be pickled
+def process_file(args):
+    full_path, session, config, job, layer_str = args
     try:
-        with open(file_path, "rb") as f:
-            layer = int(file_path.split("/")[-1].replace(".pcd","").replace(".",""))
+        with open(full_path, "rb") as f:
+            layer = int(layer_str.replace(".", ""))
             pc = pypcd.PointCloud.from_fileobj(f)
             df = pl.DataFrame({field: pc.pc_data[field] for field in pc.fields})
-            df = df.with_columns(pl.lit(layer).alias("layer"))
-            all_dfs.append(df)
-    except AssertionError:
-        print(f"Skipping invalid or corrupted file: {file_path}")
+            df = df.with_columns([
+                pl.lit(layer).alias("layer"),
+                pl.lit(session).alias("session"),
+                pl.lit(config).alias("config"),
+                pl.lit(job).alias("job")
+            ])
+            return df
+    except (AssertionError, ValueError) as e:
+        print(f"Skipping file due to error ({e.__class__.__name__}): {full_path}")
+        return None
+
+# Main
+def parallel_process(log_path, pattern):
+    file_args = []
+    for dirpath, dirnames, filenames in os.walk(log_path):
+        for filename in filenames:
+            full_path = os.path.join(dirpath, filename)
+            match = pattern.search(full_path)
+            if match:
+                file_args.append((full_path, *match.groups()))
+
+    with Pool(processes=cpu_count()) as pool:
+        results = pool.map(process_file, file_args)
+
+    # Filter out failed results (None)
+    all_dfs = [df for df in results if df is not None]
+    return all_dfs
+all_dfs = parallel_process(log_path, pattern)
+
+# %%
+'''Compute Memory Size'''
 sizes = [df.estimated_size() for df in all_dfs]
-
-# Sum total memory usage (in bytes)
 total_bytes = sum(sizes)
-
 print(f"Memory size of all dataframes combined: {total_bytes / (1024**2):.2f} MB")
 # %%
 import matplotlib.pyplot as plt
@@ -54,3 +80,6 @@ ax.set_title("Point Cloud")
 
 ax.view_init(elev=0, azim=-90)
 plt.show()
+
+if "__name__" == __"__main__:
+    pass
