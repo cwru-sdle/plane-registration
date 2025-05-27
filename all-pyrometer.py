@@ -4,7 +4,7 @@ from pypcd import pypcd
 import polars as pl
 import os
 import re
-from multiprocessing import Pool, cpu_count
+import pyarrow.parquet as pq
 
 # %%
 '''Get Paths and Compile Regex Pattern'''
@@ -17,45 +17,46 @@ pattern = re.compile(
     session_(\d{4}_\d{2}_\d{2}_\d{2}-\d{2}-\d{2}\.\d+)/     # session
     config_(\d+_[a-f0-9]+)/                                 # config
     job_(\d+_[a-f0-9]+)/                                    # job
-    sensors/ECAMPCDWriterSink__1/layer/(\d{3}\.\d{3})\.pcd  # layer
+    sensors/ECAMPCDWriterSink__1/(?:([\d]+)/)?                      # optional numeric part_number
+    (?:layer/)?(\d{3}\.\d{3})\.pcd                                  # layer
     """,
     re.VERBOSE
 )
 
 # %%
 '''Process a Batch of Files from One Session'''
+
 def process_and_save_session(session, file_args):
     session_safe = session.replace("/", "_")
     output_path = os.path.join(output_dir, f"{session_safe}.parquet")
-    
-    # Check if output file already exists; skip if yes
-    if os.path.exists(output_path):
-        print(f"Skipping session {session} as {output_path} already exists.")
-        return
-    
-    dfs = []
-    for full_path, _, config, job, layer_str in file_args:
+
+    writer = None
+    for full_path, _, config, job, subfolder, layer_str in file_args:
         try:
             with open(full_path, "rb") as f:
                 layer = int(layer_str.replace(".", ""))
                 pc = pypcd.PointCloud.from_fileobj(f)
                 df = pl.DataFrame({field: pc.pc_data[field] for field in pc.fields})
-                df = df.with_columns([
+                columns = [
                     pl.lit(layer).alias("layer"),
                     pl.lit(session).alias("session"),
                     pl.lit(config).alias("config"),
                     pl.lit(job).alias("job")
-                ])
-                dfs.append(df)
+                ]
+                if subfolder:
+                    columns.append(pl.lit(subfolder).cast(pl.Int32).alias("subfolder"))
+                df = df.with_columns(columns)
+
+                table = df.to_arrow()
+
+                if writer is None:
+                    writer = pq.ParquetWriter(output_path, table.schema)
+                writer.write_table(table)
         except (AssertionError, ValueError) as e:
             print(f"Skipping file due to error ({e.__class__.__name__}): {full_path}")
-    
-    if dfs:
-        full_df = pl.concat(dfs)
-        full_df.write_parquet(output_path)
-        print(f"Saved: {output_path}")
-        del full_df
-        del dfs
+
+    if writer:
+        writer.close()
 
 # %%
 '''Scan Files and Dispatch by Session'''
@@ -66,9 +67,10 @@ def scan_and_process_sessions(log_path, pattern):
             full_path = os.path.join(dirpath, filename)
             match = pattern.search(full_path)
             if match:
-                session, config, job, layer = match.groups()
-                session_files.setdefault(session, []).append((full_path, session, config, job, layer))
-    
+                session, config, job, part_number, layer = match.groups()
+                session_files.setdefault(session, []).append(
+                    (full_path, session, config, job, part_number, layer)
+                )
     for session, files in session_files.items():
         process_and_save_session(session, files)
 
