@@ -71,66 +71,101 @@ def _(os, pl):
 
 @app.cell
 def _(files, mo):
-    selected = mo.ui.dropdown(options=files, label="Select Session",value=files[0])
-    selected
-    return (selected,)
+    array = mo.ui.array([
+        mo.ui.dropdown(options=files, label="Select Session", value=files[0]),
+        mo.ui.dropdown(options=[30, 60, 100], label="Layer Height (μm)", value=30),
+        mo.ui.button(
+            value=False, 
+            on_click=lambda value: not value, 
+            label="Toggle Layers", 
+            kind="warn"
+        )
+    ])
+    return (array,)
 
 
 @app.cell
-def _(files, parquet_path, pl, selected, summary_df):
-    selected_index = files.index(selected.value)
-    filename = summary_df['filename'][selected_index]
-    df = pl.read_parquet(parquet_path+filename)
-    return (df,)
+def _(array):
+    array
+    return
 
 
 @app.cell
-def _(df, pl, px):
-    def create_3d_scatter(df, max_rows=10_000):
-        required_cols = ['x', 'y', 'z', 'sensor1']
-        missing_cols = [col for col in required_cols if col not in df.columns]
-        if missing_cols:
-            raise ValueError(f"Missing columns: {missing_cols}")
+def _(array, mo):
+    mo.md(f"**Current Settings:** Layers = {'ON' if array.value[2] else 'OFF'}")
+    return
 
-        # Compute IQR to remove z outliers
-        z_stats = df.select([
+
+@app.cell
+def _(array, files, parquet_path, pl, px, summary_df):
+    # Even better - do everything lazily:
+    def create_3d_scatter(df, max_rows=100_000):
+        row_count = df.select(pl.len()).collect().item()
+        if row_count > max_rows:
+            sample_fraction = max(1, int(row_count / max_rows))
+            df = df.with_row_index("row_nr").filter(pl.col("row_nr") % sample_fraction == 0)
+    
+        # Compute outlier bounds lazily
+        bounds = df.select([
             pl.col('z').quantile(0.25).alias('q1'),
             pl.col('z').quantile(0.75).alias('q3')
-        ])
-        q1, q3 = z_stats[0, 'q1'], z_stats[0, 'q3']
+        ]).collect()
+        q1, q3 = bounds[0, 'q1'], bounds[0, 'q3']
         iqr = q3 - q1
-        lower_bound = q1 - 5 * iqr
-        upper_bound = q3 + 5 * iqr
-
-        # Filter out outliers in z
-        df_filtered = df.filter((pl.col('z') >= lower_bound) & (pl.col('z') <= upper_bound))
-
-        n = df_filtered.height
-        if n > max_rows:
-            print(f"Sampling {max_rows:,} points from {n:,} after outlier removal")
-            df_sampled = df_filtered.sample(n=max_rows)
+        lower_bound = q1 - 3*iqr
+        upper_bound = q3 + 3*iqr
+    
+        # Final collection with all filters applied
+        df_final = df.filter(
+            (pl.col('z') >= lower_bound) & (pl.col('z') <= upper_bound)
+        ).collect()
+    
+        if array.value[2]:
+            # Use existing layer column with alternating red/black
+            df_final = df_final.with_columns([
+                (pl.col('layer') // array.value[1] % 2).alias('layer_color')
+            ])
+            fig = px.scatter_3d(
+                df_final.to_pandas(), 
+                x='x', y='y', z='z',
+                color='layer_color',
+                color_discrete_map={0: 'red', 1: 'black'},
+                opacity=0.5,
+            )
         else:
-            df_sampled = df_filtered
-
-        fig = px.scatter_3d(
-            df_sampled.to_pandas(), 
-            x='x', y='y', z='z',
-            color='sensor1',
-            color_continuous_scale='Viridis',
-            size_max=5,
-            opacity=0.7,
-            title=f'3D Scatter: x, y, z colored by sensor1 (n={df_sampled.height:,})'
-        )
-        fig.update_layout(scene_dragmode='orbit')
-        return fig
-    fig = create_3d_scatter(df)
-    return (fig,)
+            # Original sensor1 coloring
+            fig = px.scatter_3d(
+                df_final.to_pandas(), 
+                x='x', y='y', z='z',
+                color='sensor1',
+                color_continuous_scale='Viridis',
+                opacity=0.1,
+            )
+        fig.update_traces(marker=dict(size=1))  # Adjust size here
+        fig.update_layout(
+            scene=dict(
+                aspectmode="manual",
+                camera=dict(
+                    eye=dict(x=0, y=0, z=2.5),    # Camera directly above, looking down
+                    center=dict(x=0, y=0, z=0),   # Looking at the center
+                    up=dict(x=0, y=1, z=0)       # X-axis is "up" (horizontal in view)
+                ),
+            aspectratio=dict(x=1,y=1,z=.1)),
+            scene_dragmode='turntable')
+        return fig, df_final
+    selected_index = files.index(array.value[0])
+    filename = summary_df['filename'][selected_index]
+    df = pl.scan_parquet(parquet_path+filename)
+    fig, df_final = create_3d_scatter(df)
+    return df_final, fig
 
 
 @app.cell
-def _(fig, selected):
+def _(array, df_final, fig):
     fig.show()
-    print(selected.value)
+    print(array.value[0])
+    print(df_final.height)
+    print("Unique layers:", df_final['layer'].unique_counts().len())
     return
 
 
