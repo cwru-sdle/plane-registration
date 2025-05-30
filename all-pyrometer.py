@@ -25,8 +25,7 @@ pattern = re.compile(
 
 # %%
 '''Process a Batch of Files from One Session'''
-
-def process_and_save_session(session, file_args):
+def process_and_save_session(session, file_args,output_dir=output_dir):
     session_safe = session.replace("/", "_")
     output_path = os.path.join(output_dir, f"{session_safe}.parquet")
 
