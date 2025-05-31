@@ -1,3 +1,4 @@
 data/*
 __marimo__/*
 *_env/
+__pycache__/*
