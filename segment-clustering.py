@@ -1,3 +1,4 @@
+# %%
 import tslearn
 import tslearn.preprocessing
 import tslearn.clustering
@@ -20,8 +21,8 @@ def segment_df(df: pl.DataFrame) -> list[pl.DataFrame]:
         pl.col('state0').shift(1).alias('state0_prev'),
     ])
     df = df.with_columns([
-        ((pl.col('state0_prev') == 0) & (pl.col('state0') == 1)).alias('is_start'),
-        ((pl.col('state0_prev') == 1) & (pl.col('state0') == 0)).alias('is_end'),
+        ((pl.col('state0_prev') == 0) & (pl.col('state0') == 1)).alias('is_end'),
+        ((pl.col('state0_prev') == 1) & (pl.col('state0') == 0)).alias('is_start'),
     ])
 
     # Get row indices where transitions occur
