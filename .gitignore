@@ -3,3 +3,5 @@ __marimo__/*
 *env/
 __pycache__/*
 .Rhistory
+*.html
+segments-visualization_files/*
