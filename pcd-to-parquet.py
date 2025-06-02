@@ -17,8 +17,8 @@ pattern = re.compile(
     session_(\d{4}_\d{2}_\d{2}_\d{2}-\d{2}-\d{2}\.\d+)/     # session
     config_(\d+_[a-f0-9]+)/                                 # config
     job_(\d+_[a-f0-9]+)/                                    # job
-    sensors/ECAMPCDWriterSink__1/(?:([\d]+)/)?                      # optional numeric part_number
-    (?:layer/)?(\d{3}\.\d{3})\.pcd                                  # layer
+    sensors/ECAMPCDWriterSink__1/(?:([\d]+)/)?              # optional numeric part_number
+    (?:layer/)?(\d{3}\.\d{3})\.pcd                          # layer
     """,
     re.VERBOSE
 )
