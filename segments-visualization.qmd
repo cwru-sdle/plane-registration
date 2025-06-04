@@ -1,0 +1,37 @@
+---
+title: "Pyrometer Signals Visualization"
+format: html
+editor: visual
+---
+
+```{r Libraries and Loading}
+library(ggplot2)
+library(data.table)
+library(dplyr)
+library(viridis)
+df <- fread("/mnt/vstor/CSE_MSE_RXF131/cradle-members/mds3/aml334/plane-registration/data/pyrometer/segment_summary-0-1.csv")
+```
+
+```{r}
+df %>%
+  mutate(y_intercept = -y_intercept) %>%
+ggplot(., aes(x = x_intercept, y = y_intercept)) +
+  geom_point(aes(color = file)) +
+    scale_y_log10() +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+df %>%
+  ggplot(.,aes(x=y_intercept))+
+  geom_histogram(bins=10, fill = "steelblue", color = "black")+
+  theme_minimal()
+```
+
+```{r}
+mean(df$x_intercept)
+sd(df$x_intercept)
+mean(df$y_intercept)
+sd(df$y_intercept)
+```

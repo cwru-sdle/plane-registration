@@ -1,3 +1,7 @@
 data/*
 __marimo__/*
-*_env/
+*env/
+__pycache__/*
+.Rhistory
+*.html
+segments-visualization_files/*
