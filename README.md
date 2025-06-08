@@ -65,9 +65,6 @@ The columns from the point clouds are:
 
 # Sequences
 
-
-
 # stgnn
 
-A directed, homogenous, spatio temporal graphiacl nerual network is the most comprehensive way to represent this data. 
-
+A directed, homogenous, spatio temporal graphiacl nerual network is the most comprehensive way to represent this data.
